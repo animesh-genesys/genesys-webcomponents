@@ -27,6 +27,7 @@ import { CalendarModes } from '../../../common-enums';
 import { getDesiredLocale, getStartOfWeek } from '../../../i18n';
 
 import { GuxCalendarMode, IDateElement } from './gux-calendar.types';
+import { IPresetRange, Presets } from './service';
 
 @Component({
   styleUrl: 'gux-calendar.less',
@@ -84,6 +85,8 @@ export class GuxCalendar {
 
   private locale: string = 'en';
 
+  private selectedValue: string = this.value;
+
   emitInput() {
     this.input.emit(this.value);
   }
@@ -94,7 +97,7 @@ export class GuxCalendar {
   // eslint-disable-next-line @typescript-eslint/require-await
   @Method()
   async setValue(value: Date | [Date, Date]) {
-    if (this.mode === CalendarModes.Range && value instanceof Array) {
+    if (this.mode !== CalendarModes.Single && value instanceof Array) {
       const [date1, date2] = value;
       this.value = asIsoDateRange(date1, date2); // sorts
       this.previewValue = fromIsoDateRange(this.value)[0];
@@ -207,7 +210,10 @@ export class GuxCalendar {
       let hidden = false;
       if (date.getMonth() !== month) {
         classes.push('gux-not-in-month');
-        if (this.mode === CalendarModes.Range) {
+        if (
+          this.mode === CalendarModes.Range ||
+          this.mode === CalendarModes.PresetRange
+        ) {
           classes.push('gux-hidden');
           hidden = true;
         }
@@ -220,7 +226,10 @@ export class GuxCalendar {
       }
 
       let isSelected = false;
-      if (this.mode === CalendarModes.Range) {
+      if (
+        this.mode === CalendarModes.Range ||
+        this.mode === CalendarModes.PresetRange
+      ) {
         const [start, end] = fromIsoDateRange(this.value);
         const fromTimeStamp = start.getTime();
         const toTimeStamp = end.getTime();
@@ -328,7 +337,7 @@ export class GuxCalendar {
 
   async onDateClick(date: Date): Promise<void> {
     if (!this.outOfBounds(date)) {
-      if (this.mode !== CalendarModes.Range) {
+      if (this.mode === CalendarModes.Single) {
         await this.setValueAndEmit(date);
       } else {
         if (this.selectingDate === null) {
@@ -355,14 +364,21 @@ export class GuxCalendar {
   }
 
   onDateMouseEnter(date: Date) {
-    if (this.mode === CalendarModes.Range && this.selectingDate !== null) {
+    if (
+      (this.mode === CalendarModes.Range ||
+        this.mode === CalendarModes.PresetRange) &&
+      this.selectingDate !== null
+    ) {
       this.value = asIsoDateRange(date, this.selectingDate);
       this.updateRangeElements();
     }
   }
 
   updateRangeElements() {
-    if (this.mode === CalendarModes.Range) {
+    if (
+      this.mode === CalendarModes.Range ||
+      this.mode === CalendarModes.PresetRange
+    ) {
       removeClassToElements(this.getAllDatesElements(), 'gux-hovered');
       const [start, end] = fromIsoDateRange(this.value);
       const rangeElements = this.getRangeDatesElements(start, end);
@@ -445,6 +461,77 @@ export class GuxCalendar {
     return this.shiftArray(days, this.startDayOfWeek);
   }
 
+  incrementDayPreset(delta: number, focusedDateValue: Date): Date {
+    const newDay = new Date(focusedDateValue.getTime());
+    newDay.setDate(newDay.getDate() + delta);
+
+    return newDay;
+  }
+
+  getPresetRange(presets: Presets): IPresetRange {
+    const now = new Date();
+    let startDate: Date, endDate: Date;
+    if (presets === Presets.TODAY) {
+      startDate = now;
+      endDate = now;
+    } else if (presets === Presets.YESTERDAY) {
+      startDate = this.incrementDayPreset(-1, now);
+      endDate = this.incrementDayPreset(-1, now);
+    } else if (presets === Presets.LAST_SEVEN_DAYS) {
+      startDate = this.incrementDayPreset(-7, now);
+      endDate = this.incrementDayPreset(-1, now);
+    } else if (presets === Presets.THIS_WEEK) {
+      const startWeek = now.getDate() - now.getDay();
+      const copy = new Date(now);
+      startDate = new Date(copy.setDate(startWeek));
+      endDate = now;
+    } else if (presets === Presets.LAST_WEEK) {
+      const startWeek =
+        now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 0);
+      startDate = this.incrementDayPreset(
+        -7,
+        new Date(new Date(now).setDate(startWeek))
+      );
+      endDate = this.incrementDayPreset(
+        -1,
+        new Date(new Date(now).setDate(startWeek))
+      );
+    } else if (presets === Presets.LAST_THIRTY_DAYS) {
+      startDate = this.incrementDayPreset(-30, now);
+      endDate = this.incrementDayPreset(-1, now);
+    } else if (presets === Presets.THIS_MONTH) {
+      const day = now.getDate();
+      startDate = this.incrementDayPreset(-1 * (day - 1), now);
+      endDate = now;
+    } else if (presets === Presets.LAST_MONTH) {
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      startDate = new Date(year, month - 1, 1);
+      endDate = new Date(year, month, 0);
+    }
+    return { startDate, endDate };
+  }
+
+  async onPresetClick(preset: Presets) {
+    const presetInterval: IPresetRange = this.getPresetRange(preset);
+    await this.setValueAndEmit([
+      presetInterval.startDate,
+      presetInterval.endDate
+    ]);
+    this.selectedValue = this.value;
+  }
+
+  onPresetMouseHover(preset: Presets) {
+    const presetInterval: IPresetRange = this.getPresetRange(preset);
+    this.selectedValue = this.value;
+    void this.setValue([presetInterval.startDate, presetInterval.endDate]);
+  }
+
+  onPresetMouseLeave() {
+    const [from, to] = fromIsoDateRange(this.selectedValue);
+    void this.setValue([from, to]);
+  }
+
   componentWillLoad() {
     trackComponent(this.root, { variant: this.mode });
     this.locale = getDesiredLocale(this.root);
@@ -454,7 +541,10 @@ export class GuxCalendar {
     if (!this.value) {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      if (this.mode === CalendarModes.Range) {
+      if (
+        this.mode === CalendarModes.Range ||
+        this.mode === CalendarModes.PresetRange
+      ) {
         this.value = asIsoDateRange(now, now);
       } else {
         this.value = asIsoDate(now);
@@ -518,34 +608,127 @@ export class GuxCalendar {
     ) as JSX.Element;
   }
 
+  renderPreset(): JSX.Element {
+    if (this.mode === CalendarModes.Single || this.mode === CalendarModes.Range)
+      return null;
+    return (
+      <div class="left">
+        <div class="preset-header">
+          <label>Presets</label>
+        </div>
+        <div class="preset-content">
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.TODAY)}
+              onMouseOver={() => this.onPresetMouseHover(Presets.TODAY)}
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              Today
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.YESTERDAY)}
+              onMouseOver={() => this.onPresetMouseHover(Presets.YESTERDAY)}
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              Yesterday
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.LAST_SEVEN_DAYS)}
+              onMouseOver={() =>
+                this.onPresetMouseHover(Presets.LAST_SEVEN_DAYS)
+              }
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              Last 7 Days
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.THIS_WEEK)}
+              onMouseOver={() => this.onPresetMouseHover(Presets.THIS_WEEK)}
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              This week
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.LAST_WEEK)}
+              onMouseOver={() => this.onPresetMouseHover(Presets.LAST_WEEK)}
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              Last Week
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.LAST_THIRTY_DAYS)}
+              onMouseOver={() =>
+                this.onPresetMouseHover(Presets.LAST_THIRTY_DAYS)
+              }
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              Last 30 Days
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.THIS_MONTH)}
+              onMouseOver={() => this.onPresetMouseHover(Presets.THIS_MONTH)}
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              This Month
+            </button>
+          </div>
+          <div class="preset-options">
+            <button
+              onClick={() => void this.onPresetClick(Presets.LAST_MONTH)}
+              onMouseOver={() => this.onPresetMouseHover(Presets.LAST_MONTH)}
+              onMouseLeave={() => this.onPresetMouseLeave()}
+            >
+              Last Month
+            </button>
+          </div>
+        </div>
+      </div>
+    ) as JSX.Element;
+  }
+
   render() {
     return (
       <div class="gux-calendar">
-        <div class="gux-header">
-          <button
-            type="button"
-            class="gux-left"
-            onClick={() => this.incrementPreviewDateByMonth(-1)}
-            tabindex="-1"
-            aria-hidden="true"
-          >
-            <gux-icon decorative icon-name="chevron-small-left"></gux-icon>
-          </button>
-          {this.renderMonthHeader()}
-          <button
-            type="button"
-            class="gux-right"
-            onClick={() => this.incrementPreviewDateByMonth(1)}
-            tabindex="-1"
-            aria-hidden="true"
-          >
-            <gux-icon decorative icon-name="chevron-small-right"></gux-icon>
-          </button>
-        </div>
-        <div class="gux-content">
-          {Array.from(Array(this.numberOfMonths).keys()).map(index =>
-            this.renderCalendarTable(index)
-          )}
+        {this.renderPreset()}
+        <div class="right">
+          <div class="gux-header">
+            <button
+              type="button"
+              class="gux-left"
+              onClick={() => this.incrementPreviewDateByMonth(-1)}
+              tabindex="-1"
+              aria-hidden="true"
+            >
+              <gux-icon decorative icon-name="chevron-small-left"></gux-icon>
+            </button>
+            {this.renderMonthHeader()}
+            <button
+              type="button"
+              class="gux-right"
+              onClick={() => this.incrementPreviewDateByMonth(1)}
+              tabindex="-1"
+              aria-hidden="true"
+            >
+              <gux-icon decorative icon-name="chevron-small-right"></gux-icon>
+            </button>
+          </div>
+          <div class="gux-content">
+            {Array.from(Array(this.numberOfMonths).keys()).map(index =>
+              this.renderCalendarTable(index)
+            )}
+          </div>
         </div>
       </div>
     ) as JSX.Element;
