@@ -426,7 +426,10 @@ export class GuxDatepicker {
     this.input.emit(this.value);
     this.updateDate();
     this.inputElement.value = this.formattedValue;
-    if (this.mode === CalendarModes.Range) {
+    if (
+      this.mode === CalendarModes.Range ||
+      this.mode === CalendarModes.PresetRange
+    ) {
       this.toInputElement.value = this.toFormattedValue;
     }
     if (
@@ -438,7 +441,10 @@ export class GuxDatepicker {
   }
 
   setValue() {
-    if (this.mode === CalendarModes.Range) {
+    if (
+      this.mode === CalendarModes.Range ||
+      this.mode === CalendarModes.PresetRange
+    ) {
       const fromValue = this.stringToDate(this.inputElement.value);
       const toValue = this.stringToDate(this.toInputElement.value);
       this.value = asIsoDateRange(fromValue, toValue);
@@ -532,7 +538,10 @@ export class GuxDatepicker {
   }
 
   updateDate() {
-    if (this.mode === CalendarModes.Range) {
+    if (
+      this.mode === CalendarModes.Range ||
+      this.mode === CalendarModes.PresetRange
+    ) {
       const [from, to] = fromIsoDateRange(this.value);
       const { map: map1, regexp: regexp1 } = this.getMapAndRegexFromField(from);
       this.formattedValue = this.format.replace(regexp1, match => {
@@ -581,7 +590,8 @@ export class GuxDatepicker {
   }
 
   getCombinedFocusedDateValue(): Date {
-    return this.mode === CalendarModes.Range
+    return this.mode === CalendarModes.Range ||
+      this.mode === CalendarModes.PresetRange
       ? this.getRangeFocusedDateValue()
       : this.getFocusedDateValue();
   }
@@ -643,12 +653,19 @@ export class GuxDatepicker {
     if (!this.value) {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      if (this.mode === CalendarModes.Range) {
+      if (
+        this.mode === CalendarModes.Range ||
+        this.mode === CalendarModes.PresetRange
+      ) {
         this.value = asIsoDateRange(now, now);
       } else {
         this.value = asIsoDate(now);
       }
-      if (this.mode === CalendarModes.Range && this.numberOfMonths < 2) {
+      if (
+        (this.mode === CalendarModes.Range ||
+          this.mode === CalendarModes.PresetRange) &&
+        this.numberOfMonths < 2
+      ) {
         this.numberOfMonths = 2;
       }
     }
@@ -703,13 +720,37 @@ export class GuxDatepicker {
         tabIndex={-1}
         ref={(el: HTMLGuxCalendarElement) => (this.calendarElement = el)}
         value={this.value}
-        mode={this.mode}
+        mode={
+          this.mode === CalendarModes.Single
+            ? CalendarModes.Single
+            : CalendarModes.PresetRange
+        }
         onInput={(event: CustomEvent) => this.onCalendarSelect(event)}
         minDate={this.minDate}
         maxDate={this.maxDate}
         numberOfMonths={this.numberOfMonths}
       />
     ) as JSX.Element;
+  }
+
+  renderCombinedField(): JSX.Element {
+    if (this.mode === CalendarModes.PresetRange)
+      return (
+        <input
+          id={this.endInputId}
+          type="text"
+          ref={(el: HTMLInputElement) => (this.toInputElement = el)}
+          onMouseUp={e => this.onInputMouseUp(e)}
+          onFocusin={e => this.onInputFocusIn(e)}
+          onFocusout={() => this.onInputFocusOut()}
+          value={this.toFormattedValue}
+          disabled={this.disabled}
+        />
+      ) as JSX.Element;
+  }
+
+  addSeperator(): JSX.Element {
+    return (<label>-</label>) as JSX.Element;
   }
 
   renderStartDateField(): JSX.Element {
@@ -725,7 +766,12 @@ export class GuxDatepicker {
           {this.getCalendarLabels()[0]}
         </label>
         <div class="gux-datepicker-field-input">
-          <div class="gux-datepicker-field-text-input">
+          <div
+            class={{
+              'gux-datepicker-field-text-input': true,
+              'combined-input': this.mode === CalendarModes.PresetRange
+            }}
+          >
             <input
               id={this.startInputId}
               type="text"
@@ -736,6 +782,8 @@ export class GuxDatepicker {
               value={this.formattedValue}
               disabled={this.disabled}
             />
+            {this.addSeperator()}
+            {this.renderCombinedField()}
             {this.renderCalendarToggleButton()}
           </div>
           {this.renderCalendar()}
@@ -745,7 +793,10 @@ export class GuxDatepicker {
   }
 
   renderEndDateField(): JSX.Element {
-    if (this.mode === CalendarModes.Single) {
+    if (
+      this.mode === CalendarModes.Single ||
+      this.mode === CalendarModes.PresetRange
+    ) {
       return null;
     }
 
