@@ -750,6 +750,9 @@ export class GuxDatepicker {
   }
 
   addSeperator(): JSX.Element {
+    if (this.mode !== CalendarModes.PresetRange) {
+      return null;
+    }
     return (<label>-</label>) as JSX.Element;
   }
 
