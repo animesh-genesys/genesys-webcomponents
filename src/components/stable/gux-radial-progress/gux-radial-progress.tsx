@@ -1,8 +1,8 @@
 import { Component, Element, h, JSX, Prop } from '@stencil/core';
 
-import { trackComponent } from 'usage-tracking';
-import { logError } from 'utils/error/log-error';
-import { randomHTMLId } from 'utils/dom/random-html-id';
+import { trackComponent } from '../../../usage-tracking';
+import { logWarn } from '../../../utils/error/log-error';
+import { randomHTMLId } from '../../../utils/dom/random-html-id';
 
 import {
   GuxPercentageState,
@@ -55,7 +55,7 @@ export class GuxRadialProgress {
       !this.screenreaderText &&
       canShowPercentageState(this.value, this.max)
     ) {
-      logError(
+      logWarn(
         'gux-radial-progress',
         'No screenreader-text provided. Provide a localized screenreader-text property for the component.'
       );
